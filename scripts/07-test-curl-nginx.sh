@@ -4,41 +4,38 @@ set -euo pipefail
 NAD_NAME="${NAD_NAME:-secondary-net@eth1}"
 NGINX_IP="${NGINX_IP:-172.30.10.100}"
 
-pods_ok=(multus-curl-w1 multus-curl-w2)
+test_pods=(multus-curl-w1 multus-curl-w2)
 
-workers=($(kubectl get nodes -o name | sed 's#node/##' | grep -v 'control-plane'))
+for pod in "${test_pods[@]}"; do
 
-cat <<EOF | kubectl apply -f -
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
-  name: multus-curl-w1
+  name: $pod
   annotations:
     k8s.v1.cni.cncf.io/networks: $NAD_NAME
+  labels:
+    app: test-pod
 spec:
-  nodeName: ${workers[0]}
   containers:
     - name: curl
       image: curlimages/curl:8.8.0
       command: ["sh", "-c", "sleep 3600"]
   restartPolicy: Never
----
-apiVersion: v1
-kind: Pod
-metadata:
-  name: multus-curl-w2
-  annotations:
-    k8s.v1.cni.cncf.io/networks: $NAD_NAME
-spec:
-  nodeName: ${workers[1]}
-  containers:
-    - name: curl
-      image: curlimages/curl:8.8.0
-      command: ["sh", "-c", "sleep 3600"]
-  restartPolicy: Never
+  # Schedule pods on different nodes to test secondary IP assignment by whereabouts
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - test-pod
+          topologyKey: "kubernetes.io/hostname"
 EOF
 
-for pod in "${pods_ok[@]}"; do
   kubectl wait --for=condition=Ready "pod/$pod" --timeout=180s
   ip=$(kubectl exec "$pod" -- sh -c "ip -o -4 addr show dev eth1 | awk '{print \$4}' | cut -d/ -f1")
   if [ -z "$ip" ]; then
@@ -57,7 +54,6 @@ metadata:
   annotations:
     k8s.v1.cni.cncf.io/networks: $NAD_NAME
 spec:
-  nodeName: ${workers[0]}
   containers:
     - name: curl
       image: curlimages/curl:8.8.0
