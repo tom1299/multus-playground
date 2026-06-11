@@ -11,10 +11,7 @@ spec:
       "master": "eth1",
       "mode": "bridge",
       "ipam": {
-        "type": "host-local",
-        "subnet": "172.30.0.0/16",
-        "rangeStart": "172.30.20.10",
-        "rangeEnd": "172.30.20.250"
+        "type": "whereabouts",
+        "range": "172.30.20.8/30"
       }
     }
-
